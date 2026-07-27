@@ -1,0 +1,28 @@
+{
+  "object_kind": "note",
+  "event_type": "note",
+  "user": {
+    "username": "local-dev"
+  },
+  "project_id": 1,
+  "project": {
+    "id": 1,
+    "git_http_url": "file:///tmp/example-repo.git",
+    "web_url": "http://gitlab.example.com/example/project"
+  },
+  "object_attributes": {
+    "note": "/cr",
+    "noteable_type": "MergeRequest",
+    "noteable_iid": 1
+  },
+  "merge_request": {
+    "iid": 1,
+    "source_branch": "feature/demo",
+    "target_branch": "master",
+    "source_sha": "HEAD",
+    "target_sha": "HEAD~1",
+    "last_commit": {
+      "id": "HEAD"
+    }
+  }
+}

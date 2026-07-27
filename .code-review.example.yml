@@ -1,0 +1,22 @@
+version: 1
+
+# Paths that your team considers important for review priority and full-context review.
+high_risk:
+  - "src/main/java/**/service/**"
+  - "src/main/java/**/controller/**"
+  - "src/main/java/**/repository/**"
+  - "src/main/java/**/dao/**"
+  - "src/main/resources/mapper/**"
+  - "src/main/resources/application-prod.yml"
+
+# Paths that can usually be reviewed with lower priority.
+low_risk:
+  - "docs/**"
+  - "src/test/**"
+  - "**/*.md"
+
+# Project-specific rules injected into Worker review prompts.
+rules:
+  - "External callbacks and message consumers must consider idempotency and retry behavior."
+  - "State transitions must check valid previous states and failure compensation paths."
+  - "Repository/Mapper changes must consider SQL correctness, index usage, and transaction boundaries."

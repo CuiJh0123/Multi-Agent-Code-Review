@@ -1,0 +1,30 @@
+.DS_Store
+.idea/
+
+# Local secrets
+.env
+.env.local
+
+# Runtime outputs
+review-log/
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/

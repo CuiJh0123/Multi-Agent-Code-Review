@@ -1,0 +1,30 @@
+{
+  "action": "created",
+  "comment": {
+    "body": "/cr",
+    "user": {
+      "login": "local-dev"
+    }
+  },
+  "issue": {
+    "number": 1,
+    "pull_request": {
+      "url": "https://api.github.com/repos/example/ai-code-review-demo/pulls/1"
+    }
+  },
+  "repository": {
+    "full_name": "example/ai-code-review-demo",
+    "clone_url": "https://github.com/example/ai-code-review-demo.git",
+    "html_url": "https://github.com/example/ai-code-review-demo"
+  },
+  "pull_request": {
+    "base": {
+      "ref": "main",
+      "sha": "HEAD~1"
+    },
+    "head": {
+      "ref": "feature/demo",
+      "sha": "HEAD"
+    }
+  }
+}
