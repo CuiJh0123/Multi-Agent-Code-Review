@@ -20,30 +20,70 @@ Git Diff / PR Webhook
 
 该 PR 用于验证中小规模后端变更的评审效果，评审过程由 GitHub Webhook 触发，并使用 OpenAI-compatible 模型完成分片 Review。
 
-| 项目 | 结果 |
-| --- | --- |
-| Changed files | 12 |
-| Diff chars | 16,263 |
-| High-risk files | 9 |
-| Context strategy | `medium_change_risk_budgeted_context` |
-| Slicing decision | `diff chars 16263 > max 16000` |
-| Shard count | 6 |
-| Worker success / failed | 6 / 0 |
-| Review depth | 9 个文件 `full_context`，3 个文件 `diff_only` |
+下面摘录一次真实 Review Report 的核心结果：
 
-代表性评审结论：
+```markdown
+## Metadata
 
-- `Error / mq_reliability`：MQ 消费者捕获异常后未记录日志，也未重新抛出异常，可能导致消息被自动 ACK，业务失败但消息不再重试。
-- `Warning / concurrency`：分布式锁过期时间的数值和单位不匹配，可能导致锁长时间不释放。
-- `Warning / cache_consistency`：Redis 恢复库存 Key 的后缀大小写不一致，可能造成库存恢复和查询使用不同 Key。
-- `Warning / exception`：枚举解析方法在入参为 `null` 时可能直接抛出 `NullPointerException`，异常语义不清晰。
+- Base: `bf1bae69be630f05ba8550acb085572cd265d5eb`
+- Head: `fe9a897ff78caf9bc5442b04df3d67db870e9e6c`
+- Diff mode: `merge-base(base...head)`
+- Diff chars: `16263`
+- Changed files: `12`
+- High-risk files: `9`
+- Slicing decision: `True`
+- Slicing reason: `context_budget_exceeded: diff chars 16263 > max 16000`
+- Shard count: `6`
+- Profile source: `default`
+- Context strategy: `medium_change_risk_budgeted_context`
 
-该示例体现了工具的几个核心能力：
+## Executive Summary
 
-- 对中小 Diff 自动切分为多个 Review Shard；
-- 根据文件职责和风险等级为核心文件补充完整上下文；
-- Worker 并行评审全部成功，避免大 Diff 单次请求超时；
-- 通过质量门禁将明确问题和人工确认项分层展示，减少泛化建议对 PR 评论的干扰。
+- Worker success: `6`
+- Worker failed: `0`
+- Role distribution: `{'data_access': 2, 'model': 4, 'service': 5, 'async': 1}`
+- Risk distribution: `{'P1': 6, 'P2': 3, 'P0': 3}`
+- Review depth distribution: `{'full_context': 9, 'diff_only': 3}`
+
+## Finding Triage
+
+LLM 输出在本报告中作为候选 finding，以下分组由本地规则生成，用于区分优先级和人工确认边界。
+
+### Recommended Findings
+
+- `shard-2` [error/mq_reliability] MQ 消费者捕获异常后未记录日志也未重新抛出，导致 Spring AMQP 认为消息消费成功并自动 ACK。
+  - Reason: 质量门禁 score=11: has_line, has_code_snippet, code_snippet_actionable, high_confidence, deterministic_bug_signal, mq_reliability_evidence
+  - Files: `group-buy-market-jiahao-trigger/src/main/java/cn/jiahao/trigger/listener/TeamRefundTopicListener.java`
+  - Snippet: Problem: MQ 消费者捕获异常后未记录日志也未重新抛出，导致 Spring AMQP 认为消息消费成功并自动 ACK。Impact: 若业务逻辑执行失败（如数据库异常、JSON 解析失败），消息将丢失，退款后库存无法恢复，造成资损且无告警，事务回滚但消息已确认导致数据不一致。Suggestion: catch 块中记录错误日志（包含消息内容和异常堆栈），并重新抛出异常（或手动 Nack）以触发 MQ 重试机制或进入死信队列。
+
+### Need Manual Check
+
+- `shard-1` [warning/concurrency] 锁过期时间单位与数值不匹配。数值 `30*24*60*60*1000L` 是毫秒数，但单位指定为 `TimeUnit.MINUTES`，导致锁过期时间变为约 4932 年。
+  - Files: `group-buy-market-jiahao-infrastructure/src/main/java/cn/jiahao/infrastructure/adapter/repository/ITradeRepositoryImpl.java`
+  - Suggestion: 将时间单位改为 `TimeUnit.MILLISECONDS`，或将数值调整为分钟数 `30*24*60`。
+
+- `shard-1` [warning/concurrency] 获取锁成功后，代码中缺少 finally 块释放锁（lockKey）。
+  - Files: `group-buy-market-jiahao-infrastructure/src/main/java/cn/jiahao/infrastructure/adapter/repository/ITradeRepositoryImpl.java`
+  - Suggestion: 增加 finally 块，在其中调用 `redisService.remove(lockKey)` 确保锁必然释放。
+
+- `shard-1` [warning/exception] 异常捕获逻辑错误。当 incr 失败时，直接删除了业务库存 Key 而非锁 Key。
+  - Files: `group-buy-market-jiahao-infrastructure/src/main/java/cn/jiahao/infrastructure/adapter/repository/ITradeRepositoryImpl.java`
+  - Suggestion: 移除该删除业务 Key 的逻辑；若需保证一致性，应记录日志或进行补偿，而非直接删除业务数据。
+
+- `shard-3` [warning/cache_consistency] Redis 恢复库存 Key 后缀大小写不一致。实例方法使用 `_Recovery`，而静态方法使用 `_recovery`。
+  - Files: `group-buy-market-jiahao-domain/src/main/java/cn/jiahao/domain/trade/service/lock/factory/TradeRuleLockFilterFactory.java`
+  - Suggestion: 统一 Key 生成逻辑中的后缀大小写，避免库存恢复和库存查询使用不同 Redis Key。
+
+- `shard-3` [warning/exception] 缺少空指针防御。`getRefundTypeEnumVOByCode` 可能返回 null，且 `refundOrderStrategyMap.get` 也可能返回 null，后续直接调用方法会导致 NPE。
+  - Files: `group-buy-market-jiahao-domain/src/main/java/cn/jiahao/domain/trade/service/refund/TradeRefundOrderService.java`
+  - Suggestion: 在调用策略前增加 null 判断，缺少策略时返回明确业务异常。
+
+- `shard-4` [warning/exception] 当入参 type 为 null 时，switch 语句会直接抛出 NullPointerException，而不是预期的 RuntimeException。
+  - Files: `group-buy-market-jiahao-domain/src/main/java/cn/jiahao/domain/trade/model/valobj/RefundTypeEnumVO.java`
+  - Suggestion: 在 switch 前增加 null 判断，明确处理非法参数。
+```
+
+该示例体现了工具在真实 PR 中的运行效果：对中小 Diff 自动切分为多个 Review Shard，为高风险文件补充完整上下文，Worker 并行评审全部成功，并通过质量门禁将明确问题与人工确认项分层展示。
 
 ## 目录结构
 
