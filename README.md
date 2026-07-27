@@ -14,6 +14,37 @@ Git Diff / PR Webhook
   -> MarkdownReportWriter 输出 Summary / Inline Review
 ```
 
+## 真实评审示例
+
+示例 PR：[CuiJh0123/group-buy-pintuan#3](https://github.com/CuiJh0123/group-buy-pintuan/pull/3)
+
+该 PR 用于验证中小规模后端变更的评审效果，评审过程由 GitHub Webhook 触发，并使用 OpenAI-compatible 模型完成分片 Review。
+
+| 项目 | 结果 |
+| --- | --- |
+| Changed files | 12 |
+| Diff chars | 16,263 |
+| High-risk files | 9 |
+| Context strategy | `medium_change_risk_budgeted_context` |
+| Slicing decision | `diff chars 16263 > max 16000` |
+| Shard count | 6 |
+| Worker success / failed | 6 / 0 |
+| Review depth | 9 个文件 `full_context`，3 个文件 `diff_only` |
+
+代表性评审结论：
+
+- `Error / mq_reliability`：MQ 消费者捕获异常后未记录日志，也未重新抛出异常，可能导致消息被自动 ACK，业务失败但消息不再重试。
+- `Warning / concurrency`：分布式锁过期时间的数值和单位不匹配，可能导致锁长时间不释放。
+- `Warning / cache_consistency`：Redis 恢复库存 Key 的后缀大小写不一致，可能造成库存恢复和查询使用不同 Key。
+- `Warning / exception`：枚举解析方法在入参为 `null` 时可能直接抛出 `NullPointerException`，异常语义不清晰。
+
+该示例体现了工具的几个核心能力：
+
+- 对中小 Diff 自动切分为多个 Review Shard；
+- 根据文件职责和风险等级为核心文件补充完整上下文；
+- Worker 并行评审全部成功，避免大 Diff 单次请求超时；
+- 通过质量门禁将明确问题和人工确认项分层展示，减少泛化建议对 PR 评论的干扰。
+
 ## 目录结构
 
 ```text
